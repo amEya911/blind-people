@@ -73,6 +73,10 @@ class MainViewModel @Inject constructor(
             Log.d(TAG, "[MainViewModel.onFrame] ignored, not running")
             return
         }
+        if (speech.isSpeaking()) {
+            Log.d(TAG, "[MainViewModel.onFrame] speech in progress, dropping frame")
+            return
+        }
         if (!hasInternet()) {
             Log.e(TAG, "[MainViewModel.onFrame] No internet connection")
             _uiState.value = AppUiState.Error("No internet connection", recoverable = true)
