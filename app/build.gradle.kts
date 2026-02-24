@@ -22,12 +22,12 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Do NOT hardcode secrets. Provide at build time:
-        // - set env var OPENAI_API_KEY
-        // - or add to local.properties: OPENAI_API_KEY=sk-...
-        val openAiApiKey: String = (providers.environmentVariable("OPENAI_API_KEY").orNull)
-            ?: (providers.gradleProperty("OPENAI_API_KEY").orNull)
+        // - set env var GEMINI_API_KEY
+        // - or add to local.properties: GEMINI_API_KEY=AI...
+        val geminiApiKey: String = (providers.environmentVariable("GEMINI_API_KEY").orNull)
+            ?: (providers.gradleProperty("GEMINI_API_KEY").orNull)
             ?: ""
-        buildConfigField("String", "OPENAI_API_KEY", "\"${openAiApiKey}\"")
+        buildConfigField("String", "GEMINI_API_KEY", "\"${geminiApiKey}\"")
     }
 
     buildTypes {

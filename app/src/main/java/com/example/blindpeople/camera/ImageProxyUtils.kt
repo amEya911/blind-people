@@ -74,9 +74,19 @@ private fun yuv420ToNv21(image: ImageProxy): ByteArray? {
     return nv21
 }
 
-internal fun Bitmap.toJpegByteArray(quality: Int = 80): ByteArray {
+internal fun Bitmap.toJpegByteArray(quality: Int = 80, maxDimension: Int? = null): ByteArray {
+    val scaledBitmap = if (maxDimension != null && (width > maxDimension || height > maxDimension)) {
+        val scale = maxDimension.toFloat() / Math.max(width, height)
+        Bitmap.createScaledBitmap(this, (width * scale).toInt(), (height * scale).toInt(), true)
+    } else {
+        this
+    }
+    
     val out = ByteArrayOutputStream()
-    compress(Bitmap.CompressFormat.JPEG, quality, out)
+    scaledBitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
+    if (scaledBitmap != this) {
+        scaledBitmap.recycle()
+    }
     return out.toByteArray()
 }
 

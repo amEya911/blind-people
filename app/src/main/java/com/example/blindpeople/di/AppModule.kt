@@ -2,7 +2,7 @@ package com.example.blindpeople.di
 
 import android.content.Context
 import com.example.blindpeople.data.ApiKeyProvider
-import com.example.blindpeople.data.OpenAiRepository
+import com.example.blindpeople.data.GeminiRepository
 import com.example.blindpeople.data.SecureApiKeyStore
 import com.squareup.moshi.Moshi
 import dagger.Module
@@ -46,11 +46,11 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideOpenAiRepository(
+    fun provideGeminiRepository(
         apiKeyProvider: ApiKeyProvider,
         client: OkHttpClient,
         moshi: Moshi,
-    ): OpenAiRepository = OpenAiRepository(
+    ): GeminiRepository = GeminiRepository(
         apiKeyProvider = apiKeyProvider,
         client = client,
         moshi = moshi,

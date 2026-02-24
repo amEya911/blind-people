@@ -20,14 +20,14 @@ class SecureApiKeyStore(
         )
     }
 
-    override fun getApiKey(): String = prefs.getString(KEY_OPENAI, "").orEmpty()
+    override fun getApiKey(): String = prefs.getString(KEY_GEMINI, "").orEmpty()
 
     fun setApiKey(value: String) {
-        prefs.edit().putString(KEY_OPENAI, value.trim()).apply()
+        prefs.edit().putString(KEY_GEMINI, value.trim()).apply()
     }
 
     companion object {
-        private const val KEY_OPENAI = "openai_api_key"
+        private const val KEY_GEMINI = "gemini_api_key"
     }
 }
 

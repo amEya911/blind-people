@@ -7,7 +7,7 @@ import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.example.blindpeople.camera.toBase64NoWrap
 import com.example.blindpeople.camera.toJpegByteArray
-import com.example.blindpeople.data.OpenAiRepository
+import com.example.blindpeople.data.GeminiRepository
 import com.example.blindpeople.data.VisionResult
 import com.example.blindpeople.tts.SpeechManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,7 +24,7 @@ import androidx.lifecycle.ViewModel
 @HiltViewModel
 class MainViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
-    private val repo: OpenAiRepository,
+    private val repo: GeminiRepository,
 ) : ViewModel() {
 
     companion object {
@@ -99,7 +99,7 @@ class MainViewModel @Inject constructor(
                 }
             }
 
-            val b64 = bitmap.toJpegByteArray(quality = 75).toBase64NoWrap()
+            val b64 = bitmap.toJpegByteArray(quality = 30, maxDimension = 512).toBase64NoWrap()
             val result = repo.analyzeImageJpegBase64(b64)
             if (result.isFailure) {
                 val msg = result.exceptionOrNull()?.message ?: "API error"
