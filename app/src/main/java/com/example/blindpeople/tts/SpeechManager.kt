@@ -18,7 +18,7 @@ class SpeechManager(
 
     companion object {
         private const val TAG = "BlindPeopleLog"
-        private const val MAX_UTTERANCE_MS = 5_000L
+        private const val MAX_UTTERANCE_MS = 3_500L
     }
 
     private val tts = TextToSpeech(context.applicationContext, this)
@@ -39,6 +39,7 @@ class SpeechManager(
         if (status == TextToSpeech.SUCCESS) {
             Log.d(TAG, "[SpeechManager.onInit] SUCCESS")
             tts.language = Locale.US
+            tts.setSpeechRate(1.1f)  // Slightly faster delivery for quicker alerts
             tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
                     Log.d(TAG, "[SpeechManager] onStart id=$utteranceId")
@@ -65,11 +66,35 @@ class SpeechManager(
         }
     }
 
+    /**
+     * Hot-switch the TTS language without restarting the engine.
+     * Returns true if the language is available on this device.
+     */
+    fun setLanguage(locale: Locale): Boolean {
+        if (!initialized.get()) return false
+        val result = tts.setLanguage(locale)
+        val available = result != TextToSpeech.LANG_MISSING_DATA &&
+                result != TextToSpeech.LANG_NOT_SUPPORTED
+        Log.d(TAG, "[SpeechManager.setLanguage] locale=$locale available=$available result=$result")
+        return available
+    }
+
+    /**
+     * Stop any current speech immediately. Used when fresher detections arrive.
+     */
+    fun stopSpeaking() {
+        if (speaking.get()) {
+            tts.stop()
+            speaking.set(false)
+            Log.d(TAG, "[SpeechManager.stopSpeaking] interrupted current speech")
+        }
+    }
+
     @Synchronized
     fun speakIfAllowed(
         text: String,
         audioEnabled: Boolean,
-        dedupeWindowMs: Long = 7_000L,
+        dedupeWindowMs: Long = 4_000L,
     ) {
         if (!audioEnabled) {
             Log.d(TAG, "[SpeechManager.speakIfAllowed] audio disabled")
@@ -85,7 +110,7 @@ class SpeechManager(
 
         val now = SystemClock.elapsedRealtime()
         if (lastSpoken == normalized && (now - lastSpokenAtMs) < dedupeWindowMs) {
-            Log.d(TAG, "[SpeechManager.speakIfAllowed] skipped due to dedupe window, text=$normalized")
+            Log.d(TAG, "[SpeechManager.speakIfAllowed] skipped due to dedupe window")
             return
         }
 
@@ -97,7 +122,7 @@ class SpeechManager(
         speaking.set(true)
         tts.speak(normalized, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
 
-        // Enforce max 5s duration by scheduling a stop if still speaking.
+        // Enforce max duration by scheduling a stop if still speaking.
         mainHandler.postDelayed({
             val stillSpeaking = speaking.get()
             val sameUtterance = currentUtteranceId == utteranceId
@@ -121,4 +146,3 @@ class SpeechManager(
 
     fun isSpeaking(): Boolean = speaking.get()
 }
-

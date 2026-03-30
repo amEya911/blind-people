@@ -6,13 +6,13 @@ import com.squareup.moshi.JsonClass
 @JsonClass(generateAdapter = true)
 data class VisionResult(
     val objects: List<DetectedObject> = emptyList(),
-    val text: List<String> = emptyList(),
 )
 
 @JsonClass(generateAdapter = true)
 data class DetectedObject(
     val name: String,
     val estimated_distance_m: Double,
+    val position: String = "center", // "left", "center", "right"
 )
 
 // Gemini Request Models

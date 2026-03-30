@@ -47,7 +47,7 @@ class GeminiRepository(
         val json = requestAdapter.toJson(requestPayload).toRequestBody("application/json; charset=utf-8".toMediaType())
 
         val request = Request.Builder()
-            .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent")
+            .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent")
             .addHeader("x-goog-api-key", apiKey)
             .addHeader("Content-Type", "application/json")
             .post(json)
@@ -77,7 +77,7 @@ class GeminiRepository(
                 Log.d(TAG_GEMINI, "[GeminiRepository.analyzeImageJpegBase64] assistantText=${assistantText.take(500)}")
 
                 // The model was instructed to output strict JSON (VisionResult).
-                // Strip markdown code fences if present via JSON response mime type it shouldn't, but just in case
+                // Strip markdown code fences if present
                 val cleanJson = assistantText
                     .replace("```json", "")
                     .replace("```", "")
@@ -85,7 +85,7 @@ class GeminiRepository(
 
                 val vision = visionResultAdapter.fromJson(cleanJson)
                     ?: return@withContext Result.failure(RuntimeException("Failed to parse vision JSON"))
-                Log.d(TAG_GEMINI, "[GeminiRepository.analyzeImageJpegBase64] vision objects=${vision.objects.size} textCount=${vision.text.size}")
+                Log.d(TAG_GEMINI, "[GeminiRepository.analyzeImageJpegBase64] vision objects=${vision.objects.size}")
 
                 return@withContext Result.success(vision)
             }
@@ -105,7 +105,7 @@ class GeminiRepository(
                 GeminiContent(
                     parts = listOf(
                         GeminiPart(
-                            text = "You are assisting a visually impaired user. Identify physical objects and visible text in the image. Estimate approximate distance in meters for each object. Respond ONLY with valid JSON in this exact format: {\"objects\":[{\"name\":\"object name\",\"estimated_distance_m\":5.0}], \"text\":[\"text1\",\"text2\"]}. Do not include any other text or markdown formatting."
+                            text = DETECTION_PROMPT
                         ),
                         GeminiPart(
                             inlineData = GeminiInlineData(
@@ -123,11 +123,19 @@ class GeminiRepository(
     }
 
     companion object {
+        private const val DETECTION_PROMPT =
+            "You assist a blind person navigating. Detect objects in the image that matter for safety: " +
+            "people, vehicles, stairs, doors, poles, furniture, animals, curbs, walls, signs. " +
+            "For each object estimate distance in meters (0-10m range) and horizontal position " +
+            "(\"left\", \"center\", or \"right\" of frame). " +
+            "Return ONLY valid JSON: {\"objects\":[{\"name\":\"object\",\"estimated_distance_m\":3.0,\"position\":\"center\"}]}. " +
+            "Max 5 objects, sorted by distance ascending. No other text."
+
         fun defaultOkHttpClient(): OkHttpClient {
             return OkHttpClient.Builder()
-                .connectTimeout(20, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .writeTimeout(30, TimeUnit.SECONDS)
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(15, TimeUnit.SECONDS)
+                .writeTimeout(10, TimeUnit.SECONDS)
                 .build()
         }
     }

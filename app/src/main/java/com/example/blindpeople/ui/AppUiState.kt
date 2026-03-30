@@ -5,6 +5,7 @@ sealed class AppUiState {
     data class Running(
         val status: String,
         val audioEnabled: Boolean,
+        val selectedLanguage: String = "en", // "en", "hi", "mr"
     ) : AppUiState()
 
     data class Error(
@@ -12,4 +13,3 @@ sealed class AppUiState {
         val recoverable: Boolean = true,
     ) : AppUiState()
 }
-
