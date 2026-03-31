@@ -154,7 +154,7 @@ private fun MainScreen(
                     val exec = executor ?: Executors.newSingleThreadExecutor().also { executor = it }
                     analysis.setAnalyzer(
                         exec,
-                        FrameAnalyzer(maxFps = 3.0) { bmp -> vm.onFrame(bmp) }
+                        FrameAnalyzer(maxFps = 4.0) { bmp -> vm.onFrame(bmp) }
                     )
 
                     val selector = CameraSelector.DEFAULT_BACK_CAMERA

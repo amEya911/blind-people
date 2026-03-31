@@ -6,7 +6,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 
 class FrameAnalyzer(
-    private val maxFps: Double = 3.0,
+    private val maxFps: Double = 4.0,
     private val onFrame: (android.graphics.Bitmap) -> Unit,
 ) : ImageAnalysis.Analyzer {
 
@@ -20,12 +20,11 @@ class FrameAnalyzer(
         try {
             val now = SystemClock.elapsedRealtime()
             if (now - lastAnalyzedAtMs < minIntervalMs) {
-                return // Silently drop — no need to log every dropped frame
+                return
             }
             lastAnalyzedAtMs = now
 
             val bmp = image.toJpegBitmap(quality = 70) ?: return
-            Log.d(TAG, "[FrameAnalyzer.analyze] frame accepted size=${bmp.width}x${bmp.height}")
             onFrame(bmp)
         } finally {
             image.close()

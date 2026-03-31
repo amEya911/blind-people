@@ -2,8 +2,9 @@ package com.example.blindpeople.di
 
 import android.content.Context
 import com.example.blindpeople.data.ApiKeyProvider
-import com.example.blindpeople.data.GeminiRepository
+import com.example.blindpeople.data.LabelTranslator
 import com.example.blindpeople.data.SecureApiKeyStore
+import com.example.blindpeople.detector.ObjectDetectorHelper
 import com.squareup.moshi.Moshi
 import dagger.Module
 import dagger.Provides
@@ -44,15 +45,20 @@ object AppModule {
         store: SecureApiKeyStore,
     ): ApiKeyProvider = store
 
+
     @Provides
     @Singleton
-    fun provideGeminiRepository(
+    fun provideObjectDetectorHelper(
+        @ApplicationContext context: Context,
+    ): ObjectDetectorHelper = ObjectDetectorHelper(context)
+
+    @Provides
+    @Singleton
+    fun provideLabelTranslator(
         apiKeyProvider: ApiKeyProvider,
         client: OkHttpClient,
-        moshi: Moshi,
-    ): GeminiRepository = GeminiRepository(
+    ): LabelTranslator = LabelTranslator(
         apiKeyProvider = apiKeyProvider,
         client = client,
-        moshi = moshi,
     )
 }

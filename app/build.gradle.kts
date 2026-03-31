@@ -50,6 +50,9 @@ android {
         compose = true
         buildConfig = true
     }
+    aaptOptions {
+        noCompress("tflite")
+    }
 }
 
 dependencies {
@@ -67,6 +70,9 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
+
+    // TensorFlow Lite — on-device object detection
+    implementation("org.tensorflow:tensorflow-lite-task-vision:0.4.4")
 
     // Networking + JSON
     implementation(libs.okhttp)

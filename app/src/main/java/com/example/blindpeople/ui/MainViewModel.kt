@@ -1,23 +1,22 @@
 package com.example.blindpeople.ui
 
 import android.graphics.Bitmap
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.util.Log
 import androidx.lifecycle.viewModelScope
-import com.example.blindpeople.camera.toBase64NoWrap
-import com.example.blindpeople.camera.toJpegByteArray
 import com.example.blindpeople.data.DetectedObject
-import com.example.blindpeople.data.GeminiRepository
-import com.example.blindpeople.data.VisionResult
+import com.example.blindpeople.data.LabelTranslator
+import com.example.blindpeople.detector.DistanceEstimator
+import com.example.blindpeople.detector.ObjectDetectorHelper
 import com.example.blindpeople.tts.SpeechManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import android.content.Context
 import androidx.lifecycle.ViewModel
@@ -26,16 +25,19 @@ import java.util.Locale
 @HiltViewModel
 class MainViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
-    private val repo: GeminiRepository,
+    private val objectDetector: ObjectDetectorHelper,
+    private val labelTranslator: LabelTranslator,
 ) : ViewModel() {
 
     companion object {
         private const val TAG = "BlindPeopleLog"
         private const val DISTANCE_THRESHOLD_M = 7.0
-        private const val MAX_OBJECTS_TO_SPEAK = 3
+        private const val MAX_OBJECTS_TO_SPEAK = 2  // Reduced from 3 to avoid verbose alerts
+        private const val DEDUPE_WINDOW_MS = 5_000L // 5 seconds to avoid repetitive alerts
     }
 
     private val speech = SpeechManager(appContext)
+    private val distanceEstimator = DistanceEstimator()
 
     private val _uiState = MutableStateFlow<AppUiState>(
         AppUiState.Idle
@@ -47,6 +49,20 @@ class MainViewModel @Inject constructor(
     private var selectedLanguage = "en"
 
     @Volatile private var inFlight: Job? = null
+
+    // Direction words per language (hardcoded — simple and always the same 3 words)
+    private val directionWords = mapOf(
+        "en" to Triple("ahead", "on the left", "on the right"),
+        "hi" to Triple("आगे", "बाएं", "दाएं"),
+        "mr" to Triple("पुढे", "डावीकडे", "उजवीकडे"),
+    )
+
+    // Distance unit per language
+    private val distanceUnit = mapOf(
+        "en" to "meters",
+        "hi" to "मीटर",
+        "mr" to "मीटर",
+    )
 
     fun setAudioEnabled(enabled: Boolean) {
         Log.d(TAG, "[MainViewModel.setAudioEnabled] enabled=$enabled")
@@ -98,142 +114,123 @@ class MainViewModel @Inject constructor(
     fun onFrame(bitmap: Bitmap) {
         if (!running) return
 
-        if (!hasInternet()) {
-            Log.e(TAG, "[MainViewModel.onFrame] No internet connection")
-            _uiState.value = AppUiState.Error("No internet connection", recoverable = true)
-            return
-        }
-
-        // If a request is already in-flight, drop this frame.
-        // But do NOT gate on isSpeaking() — allow analysis during speech for lower latency.
+        // Skip if detection already in-flight
         val currentJob = inFlight
-        if (currentJob != null && currentJob.isActive) {
-            return
-        }
+        if (currentJob != null && currentJob.isActive) return
 
-        Log.d(TAG, "[MainViewModel.onFrame] launching analysis, bitmap=${bitmap.width}x${bitmap.height}")
         inFlight = viewModelScope.launch {
-            _uiState.update { state ->
-                when (state) {
-                    is AppUiState.Running -> state.copy(status = "Analyzing…")
-                    else -> AppUiState.Running(
-                        status = "Analyzing…",
-                        audioEnabled = audioEnabled,
-                        selectedLanguage = selectedLanguage
+            // 1. Run on-device detection (no API, ~50-80ms)
+            val nearbyObjects = withContext(Dispatchers.Default) {
+                val startMs = System.currentTimeMillis()
+                val detections = objectDetector.detect(bitmap)
+                val elapsedMs = System.currentTimeMillis() - startMs
+                Log.d("Time-Taken", "[MainViewModel] detection in ${elapsedMs}ms, found ${detections.size} objects")
+
+                detections.mapNotNull { detection ->
+                    val label = detection.categories.firstOrNull()?.label ?: return@mapNotNull null
+                    val confidence = detection.categories.firstOrNull()?.score ?: 0f
+                    val distance = distanceEstimator.estimateDistance(
+                        detection, bitmap.width, bitmap.height
+                    )
+                    val position = distanceEstimator.getPosition(detection, bitmap.width)
+
+                    Log.d(TAG, "[MainViewModel] detected: $label (${(confidence * 100).toInt()}%) ${distance.toInt()}m $position")
+
+                    DetectedObject(
+                        name = label,
+                        estimated_distance_m = distance,
+                        position = position
                     )
                 }
+                .filter { it.estimated_distance_m <= DISTANCE_THRESHOLD_M }
+                .sortedBy { it.estimated_distance_m }
+                .take(MAX_OBJECTS_TO_SPEAK)
             }
 
-            // Smaller payload for faster upload: quality=20, max 480px
-            val b64 = bitmap.toJpegByteArray(quality = 20, maxDimension = 480).toBase64NoWrap()
-            val result = repo.analyzeImageJpegBase64(b64)
-            if (result.isFailure) {
-                val msg = result.exceptionOrNull()?.message ?: "API error"
-                Log.e(TAG, "[MainViewModel.onFrame] analysis failure: $msg", result.exceptionOrNull())
-                _uiState.value = AppUiState.Error(msg, recoverable = true)
-                return@launch
-            }
-
-            val vision = result.getOrThrow()
-            Log.d(TAG, "[MainViewModel.onFrame] vision objects=${vision.objects.size}")
-            val speechText = buildSpeech(vision)
+            // Update UI status (always in English for display)
             _uiState.value = AppUiState.Running(
-                status = summarizeStatus(vision),
+                status = summarizeStatus(nearbyObjects),
                 audioEnabled = audioEnabled,
                 selectedLanguage = selectedLanguage
             )
 
-            if (speechText != null) {
-                // Interrupt stale speech with fresher detection
-                speech.stopSpeaking()
-                Log.d(TAG, "[MainViewModel.onFrame] speaking: $speechText")
-                speech.speakIfAllowed(
-                    text = speechText,
-                    audioEnabled = audioEnabled,
-                    dedupeWindowMs = 4_000L
-                )
+            // 2. Build and speak alerts
+            if (nearbyObjects.isNotEmpty() && audioEnabled) {
+                val speechText = buildSpeech(nearbyObjects)
+                if (speechText != null) {
+                    speech.stopSpeaking()
+                    Log.d(TAG, "[MainViewModel.onFrame] speaking: $speechText")
+                    speech.speakIfAllowed(
+                        text = speechText,
+                        audioEnabled = audioEnabled,
+                        dedupeWindowMs = DEDUPE_WINDOW_MS
+                    )
+                }
             }
         }
     }
 
     /**
-     * Build speech from detected objects only (no raw text).
-     * Filters to objects within 7m, takes top 3 nearest, and generates
-     * directional alerts in the selected language.
+     * Build speech text from detected objects.
+     * For non-English: translates labels via Gemini API (cached after first call).
      */
-    private fun buildSpeech(vision: VisionResult): String? {
-        val nearby = vision.objects
-            .filter { it.estimated_distance_m <= DISTANCE_THRESHOLD_M }
-            .sortedBy { it.estimated_distance_m }
-            .take(MAX_OBJECTS_TO_SPEAK)
+    private suspend fun buildSpeech(objects: List<DetectedObject>): String? {
+        if (objects.isEmpty()) return null
 
-        if (nearby.isEmpty()) {
-            Log.d(TAG, "[MainViewModel.buildSpeech] no objects within ${DISTANCE_THRESHOLD_M}m")
-            return null
+        // Translate labels if language is not English
+        val translatedNames: Map<String, String> = if (selectedLanguage != "en") {
+            try {
+                labelTranslator.translate(
+                    labels = objects.map { it.name },
+                    targetLangCode = selectedLanguage
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "[MainViewModel.buildSpeech] translation failed, using English", e)
+                objects.associate { it.name to it.name }
+            }
+        } else {
+            objects.associate { it.name to it.name }
         }
 
-        val alerts = nearby.map { obj -> formatObjectAlert(obj) }
+        val alerts = objects.map { obj ->
+            val translatedName = translatedNames[obj.name] ?: obj.name
+            formatAlert(translatedName, obj.estimated_distance_m, obj.position)
+        }
+
         return alerts.joinToString(". ")
     }
 
     /**
-     * Format a single object alert with direction and distance in the selected language.
+     * Format a single alert: "person, 3 meters ahead"
      */
-    private fun formatObjectAlert(obj: DetectedObject): String {
-        val distStr = "%.0f".format(obj.estimated_distance_m)
-        return when (selectedLanguage) {
-            "hi" -> {
-                val dir = when (obj.position.lowercase()) {
-                    "left" -> "बाएं"
-                    "right" -> "दाएं"
-                    else -> "आगे"
-                }
-                "${obj.name}, $distStr मीटर $dir"
-            }
-            "mr" -> {
-                val dir = when (obj.position.lowercase()) {
-                    "left" -> "डावीकडे"
-                    "right" -> "उजवीकडे"
-                    else -> "पुढे"
-                }
-                "${obj.name}, $distStr मीटर $dir"
-            }
-            else -> {
-                val dir = when (obj.position.lowercase()) {
-                    "left" -> "on the left"
-                    "right" -> "on the right"
-                    else -> "ahead"
-                }
-                "${obj.name}, $distStr meters $dir"
-            }
+    private fun formatAlert(name: String, distanceM: Double, position: String): String {
+        val distStr = "%.0f".format(distanceM)
+        val dirs = directionWords[selectedLanguage] ?: directionWords["en"]!!
+        val unit = distanceUnit[selectedLanguage] ?: "meters"
+
+        val dir = when (position.lowercase()) {
+            "left" -> dirs.second
+            "right" -> dirs.third
+            else -> dirs.first
         }
+
+        return "$name, $distStr $unit $dir"
     }
 
-    private fun summarizeStatus(vision: VisionResult): String {
-        val within = vision.objects
-            .filter { it.estimated_distance_m <= DISTANCE_THRESHOLD_M }
-            .sortedBy { it.estimated_distance_m }
-            .take(3)
-        return if (within.isEmpty()) {
+    private fun summarizeStatus(objects: List<DetectedObject>): String {
+        return if (objects.isEmpty()) {
             "No nearby objects (≤${DISTANCE_THRESHOLD_M.toInt()}m)"
         } else {
-            "Nearby: " + within.joinToString {
+            "Nearby: " + objects.joinToString {
                 "${it.name} (~${"%.1f".format(it.estimated_distance_m)}m ${it.position})"
             }
         }
-    }
-
-    private fun hasInternet(): Boolean {
-        val cm = appContext.getSystemService(ConnectivityManager::class.java)
-            ?: return false
-        val network = cm.activeNetwork ?: return false
-        val caps = cm.getNetworkCapabilities(network) ?: return false
-        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
     override fun onCleared() {
         super.onCleared()
         Log.d(TAG, "[MainViewModel.onCleared]")
         speech.shutdown()
+        objectDetector.close()
     }
 }
