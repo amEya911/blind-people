@@ -2,7 +2,7 @@ package com.example.blindpeople.di
 
 import android.content.Context
 import com.example.blindpeople.data.ApiKeyProvider
-import com.example.blindpeople.data.GeminiRepository
+import com.example.blindpeople.data.GeminiLiveSession
 import com.example.blindpeople.data.SecureApiKeyStore
 import com.squareup.moshi.Moshi
 import dagger.Module
@@ -10,8 +10,6 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import okhttp3.OkHttpClient
-import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @Module
@@ -21,16 +19,6 @@ object AppModule {
     @Provides
     @Singleton
     fun provideMoshi(): Moshi = Moshi.Builder().build()
-
-    @Provides
-    @Singleton
-    fun provideOkHttpClient(): OkHttpClient {
-        return OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .writeTimeout(10, TimeUnit.SECONDS)
-            .build()
-    }
 
     @Provides
     @Singleton
@@ -46,13 +34,11 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideGeminiRepository(
+    fun provideGeminiLiveSession(
         apiKeyProvider: ApiKeyProvider,
-        client: OkHttpClient,
         moshi: Moshi,
-    ): GeminiRepository = GeminiRepository(
+    ): GeminiLiveSession = GeminiLiveSession(
         apiKeyProvider = apiKeyProvider,
-        client = client,
         moshi = moshi,
     )
 }

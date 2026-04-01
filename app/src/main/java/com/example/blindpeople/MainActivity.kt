@@ -13,19 +13,13 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -45,10 +39,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -154,7 +146,7 @@ private fun MainScreen(
                     val exec = executor ?: Executors.newSingleThreadExecutor().also { executor = it }
                     analysis.setAnalyzer(
                         exec,
-                        FrameAnalyzer(maxFps = 3.0) { bmp -> vm.onFrame(bmp) }
+                        FrameAnalyzer(maxFps = 1.0) { bmp -> vm.onFrame(bmp) }
                     )
 
                     val selector = CameraSelector.DEFAULT_BACK_CAMERA
@@ -228,94 +220,5 @@ private fun MainScreen(
             }
             Text(msg, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
         }
-
-        // ─── Language Selector Bottom Panel ───
-        val currentLang = when (state) {
-            is AppUiState.Running -> (state as AppUiState.Running).selectedLanguage
-            else -> "en"
-        }
-
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            tonalElevation = 2.dp,
-            color = MaterialTheme.colorScheme.surfaceVariant
-        ) {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = "Voice Language",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    LanguageChip(
-                        label = "English",
-                        selected = currentLang == "en",
-                        onClick = { vm.setLanguage("en") },
-                        modifier = Modifier.weight(1f)
-                    )
-                    LanguageChip(
-                        label = "हिन्दी",
-                        selected = currentLang == "hi",
-                        onClick = { vm.setLanguage("hi") },
-                        modifier = Modifier.weight(1f)
-                    )
-                    LanguageChip(
-                        label = "मराठी",
-                        selected = currentLang == "mr",
-                        onClick = { vm.setLanguage("mr") },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LanguageChip(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val bgColor = if (selected) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        Color.Transparent
-    }
-    val textColor = if (selected) {
-        MaterialTheme.colorScheme.onPrimary
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val borderColor = if (selected) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.outline
-    }
-
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(bgColor)
-            .border(1.dp, borderColor, RoundedCornerShape(20.dp))
-            .clickable { onClick() }
-            .padding(vertical = 8.dp, horizontal = 16.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            fontSize = 14.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            color = textColor
-        )
     }
 }

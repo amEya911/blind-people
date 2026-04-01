@@ -6,7 +6,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 
 class FrameAnalyzer(
-    private val maxFps: Double = 3.0,
+    private val maxFps: Double = 1.0,
     private val onFrame: (android.graphics.Bitmap) -> Unit,
 ) : ImageAnalysis.Analyzer {
 
