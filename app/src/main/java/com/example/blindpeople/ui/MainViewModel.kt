@@ -8,41 +8,41 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.blindpeople.camera.toBase64NoWrap
 import com.example.blindpeople.camera.toJpegByteArray
-import com.example.blindpeople.data.GeminiLiveSession
-import com.example.blindpeople.tts.NativeAudioPlayer
+import com.example.blindpeople.data.GeminiUnaryClient
+import com.example.blindpeople.tts.SpeechManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import android.content.Context
+import java.util.concurrent.atomic.AtomicBoolean
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
-    private val liveSession: GeminiLiveSession,
+    private val geminiClient: GeminiUnaryClient,
 ) : ViewModel() {
 
     companion object {
         private const val TAG = "BlindPeopleLog"
     }
 
-    private val audioPlayer = NativeAudioPlayer()
+    private val speechManager = SpeechManager(appContext)
 
     private val _uiState = MutableStateFlow<AppUiState>(AppUiState.Idle)
     val uiState: StateFlow<AppUiState> = _uiState
 
     private var running = false
     private var audioEnabled = true
-    private var responseCollectorJob: Job? = null
+    private val isProcessing = AtomicBoolean(false)
 
     fun setAudioEnabled(enabled: Boolean) {
         Log.d(TAG, "[MainViewModel.setAudioEnabled] enabled=$enabled")
         audioEnabled = enabled
         if (!enabled) {
-            audioPlayer.stop()
+            speechManager.stopSpeaking()
         }
         updateRunningState()
     }
@@ -56,27 +56,55 @@ class MainViewModel @Inject constructor(
 
         running = true
         _uiState.value = AppUiState.Running(
-            status = "Connecting…",
+            status = "Listening…",
+            audioEnabled = audioEnabled
+        )
+    }
+
+    fun stop() {
+        Log.d(TAG, "[MainViewModel.stop] called")
+        running = false
+        speechManager.stopSpeaking()
+        isProcessing.set(false)
+        _uiState.value = AppUiState.Idle
+    }
+
+    /**
+     * Compress the frame and send it to the Unary REST API.
+     * Only send if not currently processing and not speaking.
+     */
+    fun onFrame(bitmap: Bitmap) {
+        if (!running) return
+
+        // Skip if we are currently analyzing a frame or if SpeechManager is actively talking
+        if (isProcessing.get() || speechManager.isSpeaking()) {
+            return
+        }
+
+        // Lock
+        if (!isProcessing.compareAndSet(false, true)) {
+            return
+        }
+
+        _uiState.value = AppUiState.Running(
+            status = "Analyzing…",
             audioEnabled = audioEnabled
         )
 
-        // Open the WebSocket
-        liveSession.connect()
-
-        // Collect audio chunks and pipe them to the AudioTrack player
-        responseCollectorJob?.cancel()
-        responseCollectorJob = viewModelScope.launch {
-            liveSession.audioChunks.collect { base64Pcm ->
-                if (audioEnabled) {
-                    audioPlayer.write(base64Pcm)
-                }
-            }
-        }
-
-        // Collect turn completions for UI status updates
         viewModelScope.launch {
-            liveSession.turnComplete.collect {
-                Log.d(TAG, "[MainViewModel] turn complete")
+            try {
+                val b64 = bitmap.toJpegByteArray(quality = 30, maxDimension = 320).toBase64NoWrap()
+                val result = geminiClient.detectObject(b64)
+                
+                if (result != null && running) {
+                    Log.d(TAG, "[MainViewModel] Gemini result: $result")
+                    speechManager.speakIfAllowed(result, audioEnabled)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "[MainViewModel] error detecting object", e)
+            } finally {
+                // Unlock and update UI state
+                isProcessing.set(false)
                 if (running) {
                     _uiState.value = AppUiState.Running(
                         status = "Listening…",
@@ -87,46 +115,10 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    fun stop() {
-        Log.d(TAG, "[MainViewModel.stop] called")
-        running = false
-        responseCollectorJob?.cancel()
-        responseCollectorJob = null
-        liveSession.disconnect()
-        audioPlayer.stop()
-        _uiState.value = AppUiState.Idle
-    }
-
-    /**
-     * Fire-and-forget: compress the frame and send it to the WebSocket.
-     * The model will respond asynchronously with audio chunks.
-     */
-    fun onFrame(bitmap: Bitmap) {
-        if (!running) return
-
-        if (!liveSession.isConnected()) {
-            // Session not ready yet — update status and skip this frame
-            _uiState.value = AppUiState.Running(
-                status = "Connecting…",
-                audioEnabled = audioEnabled
-            )
-            return
-        }
-
-        _uiState.value = AppUiState.Running(
-            status = "Streaming…",
-            audioEnabled = audioEnabled
-        )
-
-        // Compress and send — fire-and-forget, no blocking
-        val b64 = bitmap.toJpegByteArray(quality = 50, maxDimension = 640).toBase64NoWrap()
-        liveSession.sendFrame(b64)
-    }
-
     private fun updateRunningState() {
         if (running) {
             _uiState.value = AppUiState.Running(
-                status = (_uiState.value as? AppUiState.Running)?.status ?: "Streaming…",
+                status = (_uiState.value as? AppUiState.Running)?.status ?: "Listening…",
                 audioEnabled = audioEnabled
             )
         }
@@ -142,7 +134,6 @@ class MainViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         Log.d(TAG, "[MainViewModel.onCleared]")
-        liveSession.disconnect()
-        audioPlayer.release()
+        speechManager.shutdown()
     }
 }

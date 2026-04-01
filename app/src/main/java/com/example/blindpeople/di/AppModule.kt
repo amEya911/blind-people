@@ -2,7 +2,7 @@ package com.example.blindpeople.di
 
 import android.content.Context
 import com.example.blindpeople.data.ApiKeyProvider
-import com.example.blindpeople.data.GeminiLiveSession
+import com.example.blindpeople.data.GeminiUnaryClient
 import com.example.blindpeople.data.SecureApiKeyStore
 import com.squareup.moshi.Moshi
 import dagger.Module
@@ -34,10 +34,10 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideGeminiLiveSession(
+    fun provideGeminiUnaryClient(
         apiKeyProvider: ApiKeyProvider,
         moshi: Moshi,
-    ): GeminiLiveSession = GeminiLiveSession(
+    ): GeminiUnaryClient = GeminiUnaryClient(
         apiKeyProvider = apiKeyProvider,
         moshi = moshi,
     )
