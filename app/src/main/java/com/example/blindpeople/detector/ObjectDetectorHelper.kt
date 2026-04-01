@@ -22,9 +22,9 @@ class ObjectDetectorHelper(
 ) {
     companion object {
         private const val TAG = "BlindPeopleLog"
-        private const val MODEL_FILE = "efficientdet_lite2.tflite"
-        private const val MAX_RESULTS = 5
-        private const val SCORE_THRESHOLD = 0.50f  // Higher threshold to reduce misclassifications
+        private const val MODEL_FILE = "efficientdet_lite4.tflite"
+        private const val MAX_RESULTS = 10
+        private const val SCORE_THRESHOLD = 0.25f  // Lowered from 0.50 — EfficientDet outputs valid detections at 0.25-0.45
         private const val NUM_THREADS = 4
     }
 

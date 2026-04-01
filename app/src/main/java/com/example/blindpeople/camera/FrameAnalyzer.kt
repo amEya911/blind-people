@@ -24,7 +24,7 @@ class FrameAnalyzer(
             }
             lastAnalyzedAtMs = now
 
-            val bmp = image.toJpegBitmap(quality = 70) ?: return
+            val bmp = image.toJpegBitmap(quality = 90) ?: return
             onFrame(bmp)
         } finally {
             image.close()

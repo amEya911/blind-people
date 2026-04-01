@@ -57,12 +57,7 @@ class MainViewModel @Inject constructor(
         "mr" to Triple("पुढे", "डावीकडे", "उजवीकडे"),
     )
 
-    // Distance unit per language
-    private val distanceUnit = mapOf(
-        "en" to "meters",
-        "hi" to "मीटर",
-        "mr" to "मीटर",
-    )
+    // Removed distanceUnit map
 
     fun setAudioEnabled(enabled: Boolean) {
         Log.d(TAG, "[MainViewModel.setAudioEnabled] enabled=$enabled")
@@ -158,7 +153,6 @@ class MainViewModel @Inject constructor(
             if (nearbyObjects.isNotEmpty() && audioEnabled) {
                 val speechText = buildSpeech(nearbyObjects)
                 if (speechText != null) {
-                    speech.stopSpeaking()
                     Log.d(TAG, "[MainViewModel.onFrame] speaking: $speechText")
                     speech.speakIfAllowed(
                         text = speechText,
@@ -200,30 +194,16 @@ class MainViewModel @Inject constructor(
         return alerts.joinToString(". ")
     }
 
-    /**
-     * Format a single alert: "person, 3 meters ahead"
-     */
     private fun formatAlert(name: String, distanceM: Double, position: String): String {
-        val distStr = "%.0f".format(distanceM)
         val dirs = directionWords[selectedLanguage] ?: directionWords["en"]!!
-        val unit = distanceUnit[selectedLanguage] ?: "meters"
-
-        val dir = when (position.lowercase()) {
-            "left" -> dirs.second
-            "right" -> dirs.third
-            else -> dirs.first
-        }
-
-        return "$name, $distStr $unit $dir"
+        return "$name ${dirs.first}"
     }
 
     private fun summarizeStatus(objects: List<DetectedObject>): String {
         return if (objects.isEmpty()) {
-            "No nearby objects (≤${DISTANCE_THRESHOLD_M.toInt()}m)"
+            "No objects detected"
         } else {
-            "Nearby: " + objects.joinToString {
-                "${it.name} (~${"%.1f".format(it.estimated_distance_m)}m ${it.position})"
-            }
+            "Nearby: " + objects.joinToString { it.name }
         }
     }
 

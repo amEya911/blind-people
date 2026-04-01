@@ -111,14 +111,22 @@ class SpeechManager(
 
         val now = SystemClock.elapsedRealtime()
 
+        // "let it first say the current input": Do not interrupt if currently speaking
+        if (speaking.get()) {
+            return
+        }
+
+        // "send the next input after 2 seconds": Global rate limit between any speech
+        if ((now - lastSpokenAtMs) < 2000L) {
+            return
+        }
+
         // Deduplicate: don't repeat the exact same phrase within the window
         if (lastSpoken == normalized && (now - lastSpokenAtMs) < dedupeWindowMs) {
             Log.d(TAG, "[SpeechManager.speakIfAllowed] skipped (dedupe)")
             return
         }
 
-        // Stop previous speech before starting new one
-        tts.stop()
         val utteranceId = "utt_${now}"
         currentUtteranceId = utteranceId
         currentUtteranceStartMs = now
